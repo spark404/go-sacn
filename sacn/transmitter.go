@@ -238,7 +238,7 @@ func setMulticastTTL(conn *net.UDPConn, ttl int) error {
 
 	var ssoErr error
 	err = rawConn.Control(func(fd uintptr) {
-		ssoErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.IP_MULTICAST_TTL, ttl)
+		ssoErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_TTL, ttl)
 	})
 
 	if err != nil {
