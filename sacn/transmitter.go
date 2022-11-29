@@ -2,7 +2,9 @@ package sacn
 
 import (
 	"fmt"
+	"log"
 	"net"
+	"syscall"
 	"time"
 )
 
@@ -65,9 +67,15 @@ func (t *Transmitter) Activate(universe uint16) (chan<- []byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	serv, err := net.ListenUDP("udp", ServerAddr)
 	if err != nil {
 		return nil, err
+	}
+
+	err = setMulticastTTL(serv, 4)
+	if err != nil {
+		log.Printf("Failed to set multicast ttl: %s", err.Error())
 	}
 
 	ch := make(chan []byte)
@@ -220,4 +228,26 @@ func (t *Transmitter) SetPriority(prio byte) {
 func generateMulticast(universe uint16) *net.UDPAddr {
 	addr, _ := net.ResolveUDPAddr("udp", calcMulticastAddr(universe)+":5568")
 	return addr
+}
+
+func setMulticastTTL(conn *net.UDPConn, ttl int) error {
+	rawConn, err := conn.SyscallConn()
+	if err != nil {
+		return err
+	}
+
+	var ssoErr error
+	err = rawConn.Control(func(fd uintptr) {
+		ssoErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.IP_MULTICAST_TTL, ttl)
+	})
+
+	if err != nil {
+		return err
+	}
+
+	if ssoErr != nil {
+		return ssoErr
+	}
+
+	return nil
 }
