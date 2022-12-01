@@ -40,12 +40,12 @@ func NewTransmitter(binding string, cid [16]byte, sourceName string) (Transmitte
 		keepAliveInterval: time.Second * 1,
 	}
 	//create a udp address for testing, if the given bind address is possible
-	addr, err := net.ResolveUDPAddr("udp", binding)
+	addr, err := net.ResolveUDPAddr("udp4", binding)
 	if err != nil {
 		return tx, err
 	}
-	serv, err := net.ListenUDP("udp", addr)
-	serv.Close()
+	serv, err := net.ListenUDP("udp4", addr)
+	_ = serv.Close()
 	if err != nil {
 		return tx, err
 	}
@@ -63,12 +63,12 @@ func (t *Transmitter) Activate(universe uint16) (chan<- []byte, error) {
 		return nil, fmt.Errorf("the given universe %v is already activated", universe)
 	}
 	//create udp socket
-	ServerAddr, err := net.ResolveUDPAddr("udp", t.bind)
+	ServerAddr, err := net.ResolveUDPAddr("udp4", t.bind)
 	if err != nil {
 		return nil, err
 	}
 
-	serv, err := net.ListenUDP("udp", ServerAddr)
+	serv, err := net.ListenUDP("udp4", ServerAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (t *Transmitter) Activate(universe uint16) (chan<- []byte, error) {
 		//if the channel was closed, we deactivate the universe
 		delete(t.master, universe)
 		delete(t.universes, universe)
-		serv.Close()
+		_ = serv.Close()
 	}()
 
 	return ch, nil
@@ -180,9 +180,9 @@ func (t *Transmitter) SetDestinations(universe uint16, destinations []string) []
 // Destinations returns all destinations that have been set via SetDestinations. Note: the returned
 // slice contains deep copies and no change will affect the internal slice.
 func (t *Transmitter) Destinations(universe uint16) []net.UDPAddr {
-	new := make([]net.UDPAddr, len(t.destinations[universe]))
-	copy(new, t.destinations[universe])
-	return new
+	destinationList := make([]net.UDPAddr, len(t.destinations[universe]))
+	copy(destinationList, t.destinations[universe])
+	return destinationList
 }
 
 // handles sending and sequence numbering
@@ -226,7 +226,7 @@ func (t *Transmitter) SetPriority(prio byte) {
 }
 
 func generateMulticast(universe uint16) *net.UDPAddr {
-	addr, _ := net.ResolveUDPAddr("udp", calcMulticastAddr(universe)+":5568")
+	addr, _ := net.ResolveUDPAddr("udp4", calcMulticastAddr(universe)+":5568")
 	return addr
 }
 
@@ -238,7 +238,13 @@ func setMulticastTTL(conn *net.UDPConn, ttl int) error {
 
 	var ssoErr error
 	err = rawConn.Control(func(fd uintptr) {
-		ssoErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_TTL, ttl)
+		current, err := syscall.GetsockoptByte(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_LOOP)
+		if err != nil {
+			ssoErr = err
+			return
+		}
+		log.Printf("Current is %d", current)
+		ssoErr = syscall.SetsockoptByte(int(fd), syscall.IPPROTO_IP, syscall.IP_MULTICAST_TTL, byte(ttl))
 	})
 
 	if err != nil {
